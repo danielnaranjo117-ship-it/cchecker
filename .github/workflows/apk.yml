@@ -1,0 +1,1796 @@
+name: apk
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Licencias Android
+        run: yes | flutter doctor --android-licenses || true
+
+      - name: Generar y compilar
+        run: |
+          set -euo pipefail
+
+          NAME="ccheker_live"
+
+          flutter create --org com.ccheker --project-name "$NAME" --platforms android "$NAME"
+          cd "$NAME"
+          rm -f test/widget_test.dart
+          mkdir -p lib/screens
+
+          cat > pubspec.yaml <<'YAML'
+          name: ccheker_live
+          description: CCheker Live
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.3.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            flutter_riverpod: ^2.5.1
+            http: ^1.2.1
+            path_provider: ^2.1.3
+            shared_preferences: ^2.2.3
+            encrypt: ^5.0.3
+            crypto: ^3.0.3
+            local_auth: ^2.2.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^4.0.0
+
+          flutter:
+            uses-material-design: true
+          YAML
+
+          cat > lib/theme.dart <<'DART'
+          import 'package:flutter/material.dart';
+
+          class AppColors {
+            static const bg = Color(0xFF0A0C10);
+            static const bgElevated = Color(0xFF12151C);
+            static const surface = Color(0xFF171B24);
+            static const glassStroke = Color(0x22FFFFFF);
+            static const glassStrokeHi = Color(0x44FFFFFF);
+            static const textHi = Color(0xFFF2F4F8);
+            static const textMid = Color(0xFFA9B1C2);
+            static const textLo = Color(0xFF6C7486);
+            static const lime = Color(0xFFB8F24A);
+            static const cyan = Color(0xFF4AD9F2);
+            static const violet = Color(0xFF9B7BF2);
+            static const magenta = Color(0xFFF24AB8);
+            static const amber = Color(0xFFF2C24A);
+            static const red = Color(0xFFF24A5E);
+            static const tierGold = Color(0xFFF2C24A);
+            static const tierSilver = Color(0xFFC8D0E0);
+            static const tierBronze = Color(0xFFD08A4A);
+            static const gradientGlass = LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0x1AFFFFFF), Color(0x08FFFFFF)],
+            );
+          }
+
+          class AppTextStyles {
+            static const h1 = TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.textHi, letterSpacing: -0.5);
+            static const h2 = TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: AppColors.textHi);
+            static const body = TextStyle(fontSize: 14, color: AppColors.textMid, height: 1.4);
+            static const caption = TextStyle(fontSize: 12, color: AppColors.textLo);
+            static const mono = TextStyle(fontSize: 13, fontFamily: 'monospace', color: AppColors.textHi);
+          }
+          DART
+
+          cat > lib/models.dart <<'DART'
+          enum CheckStatus { unchecked, checking, live, dead, unknown }
+          enum CardTier { bronze, silver, gold, platinum }
+          enum ProxyKind { http, https, socks5 }
+          enum ProxyHealth { unknown, up, down }
+
+          extension CheckStatusX on CheckStatus {
+            String get label => switch (this) {
+                  CheckStatus.unchecked => 'sin revisar',
+                  CheckStatus.checking => 'revisando',
+                  CheckStatus.live => 'viva',
+                  CheckStatus.dead => 'muerta',
+                  CheckStatus.unknown => 'incierta',
+                };
+          }
+
+          class CreditCard {
+            CreditCard({
+              required this.id,
+              required this.pan,
+              this.expMonth = '',
+              this.expYear = '',
+              this.cvv = '',
+              this.bank = '',
+              this.country = '',
+              this.tier = CardTier.bronze,
+              this.status = CheckStatus.unchecked,
+              this.declineCode,
+              this.favorite = false,
+              DateTime? addedAt,
+            }) : addedAt = addedAt ?? DateTime.now();
+
+            final String id;
+            final String pan;
+            final String expMonth;
+            final String expYear;
+            final String cvv;
+            final String bank;
+            final String country;
+            final CardTier tier;
+            CheckStatus status;
+            final String? declineCode;
+            final bool favorite;
+            final DateTime addedAt;
+
+            String get expLabel {
+              if (expMonth.isEmpty) return '--/--';
+              final y = expYear.length == 4 ? expYear.substring(2) : expYear;
+              return '$expMonth/$y';
+            }
+
+            Map<String, dynamic> toJson() => {
+                  'id': id,
+                  'pan': pan,
+                  'expMonth': expMonth,
+                  'expYear': expYear,
+                  'cvv': cvv,
+                  'bank': bank,
+                  'country': country,
+                  'tier': tier.name,
+                  'status': status.name,
+                  'declineCode': declineCode,
+                  'favorite': favorite,
+                  'addedAt': addedAt.toIso8601String(),
+                };
+
+            factory CreditCard.fromJson(Map<String, dynamic> j) => CreditCard(
+                  id: j['id'] as String,
+                  pan: j['pan'] as String,
+                  expMonth: j['expMonth'] as String? ?? '',
+                  expYear: j['expYear'] as String? ?? '',
+                  cvv: j['cvv'] as String? ?? '',
+                  bank: j['bank'] as String? ?? '',
+                  country: j['country'] as String? ?? '',
+                  tier: CardTier.values.firstWhere((t) => t.name == j['tier'], orElse: () => CardTier.bronze),
+                  status: CheckStatus.values.firstWhere((s) => s.name == j['status'], orElse: () => CheckStatus.unchecked),
+                  declineCode: j['declineCode'] as String?,
+                  favorite: j['favorite'] as bool? ?? false,
+                  addedAt: DateTime.tryParse(j['addedAt'] as String? ?? '') ?? DateTime.now(),
+                );
+          }
+
+          class ProxyNode {
+            ProxyNode({
+              required this.id,
+              required this.host,
+              required this.port,
+              this.user = '',
+              this.pass = '',
+              this.kind = ProxyKind.http,
+              this.health = ProxyHealth.unknown,
+              this.latencyMs = 0,
+            });
+
+            final String id;
+            final String host;
+            final int port;
+            final String user;
+            final String pass;
+            final ProxyKind kind;
+            ProxyHealth health;
+            int latencyMs;
+
+            String get label => '$host:$port';
+
+            Map<String, dynamic> toJson() => {
+                  'id': id, 'host': host, 'port': port, 'user': user, 'pass': pass,
+                  'kind': kind.name, 'health': health.name, 'latencyMs': latencyMs,
+                };
+
+            factory ProxyNode.fromJson(Map<String, dynamic> j) => ProxyNode(
+                  id: j['id'] as String,
+                  host: j['host'] as String,
+                  port: (j['port'] as num).toInt(),
+                  user: j['user'] as String? ?? '',
+                  pass: j['pass'] as String? ?? '',
+                  kind: ProxyKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => ProxyKind.http),
+                  health: ProxyHealth.values.firstWhere((h) => h.name == j['health'], orElse: () => ProxyHealth.unknown),
+                  latencyMs: (j['latencyMs'] as num?)?.toInt() ?? 0,
+                );
+          }
+
+          class CheckStats {
+            CheckStats({this.done = 0, this.live = 0, this.dead = 0, this.errors = 0});
+            final int done;
+            final int live;
+            final int dead;
+            final int errors;
+
+            double get pct => done == 0 ? 0 : live / done;
+            double get hitRate => done == 0 ? 0 : (live + dead) / done;
+
+            CheckStats copyWith({int? done, int? live, int? dead, int? errors}) => CheckStats(
+                  done: done ?? this.done,
+                  live: live ?? this.live,
+                  dead: dead ?? this.dead,
+                  errors: errors ?? this.errors,
+                );
+          }
+
+          class AppSettings {
+            AppSettings({
+              this.concurrency = 4,
+              this.timeoutSec = 12,
+              this.probeUrl = 'https://api.ipify.org?format=json',
+              this.autoLockMin = 5,
+              this.biometrics = false,
+            });
+            final int concurrency;
+            final int timeoutSec;
+            final String probeUrl;
+            final int autoLockMin;
+            final bool biometrics;
+
+            AppSettings copyWith({int? concurrency, int? timeoutSec, String? probeUrl, int? autoLockMin, bool? biometrics}) =>
+                AppSettings(
+                  concurrency: concurrency ?? this.concurrency,
+                  timeoutSec: timeoutSec ?? this.timeoutSec,
+                  probeUrl: probeUrl ?? this.probeUrl,
+                  autoLockMin: autoLockMin ?? this.autoLockMin,
+                  biometrics: biometrics ?? this.biometrics,
+                );
+          }
+          DART
+
+          cat > lib/core.dart <<'DART'
+          import 'dart:convert';
+          import 'dart:io';
+          import 'dart:math';
+
+          import 'package:crypto/crypto.dart';
+          import 'package:encrypt/encrypt.dart' as enc;
+          import 'package:path_provider/path_provider.dart';
+
+          final _rnd = Random.secure();
+
+          String newId() => '${DateTime.now().microsecondsSinceEpoch}${_rnd.nextInt(99999)}';
+
+          String fmtInt(num n) {
+            final s = n.round().abs().toString();
+            final b = StringBuffer();
+            for (var i = 0; i < s.length; i++) {
+              if (i > 0 && (s.length - i) % 3 == 0) b.write('.');
+              b.write(s[i]);
+            }
+            return (n < 0 ? '-' : '') + b.toString();
+          }
+
+          String fmtPct(double v) => '${(v * 100).toStringAsFixed(1)}%';
+
+          String maskPan(String pan) =>
+              pan.length < 8 ? pan : '${pan.substring(0, 4)} **** **** ${pan.substring(pan.length - 4)}';
+
+          bool luhn(String pan) {
+            final d = pan.replaceAll(RegExp(r'\D'), '');
+            if (d.length < 12) return false;
+            var sum = 0;
+            var alt = false;
+            for (var i = d.length - 1; i >= 0; i--) {
+              var n = int.parse(d[i]);
+              if (alt) {
+                n *= 2;
+                if (n > 9) n -= 9;
+              }
+              sum += n;
+              alt = !alt;
+            }
+            return sum % 10 == 0;
+          }
+
+          String schemeOf(String pan) {
+            if (pan.isEmpty) return '';
+            final c = pan[0];
+            if (c == '4') return 'VISA';
+            if (c == '5' || c == '2') return 'MASTERCARD';
+            if (c == '3') return 'AMEX';
+            if (c == '6') return 'DISCOVER';
+            return '';
+          }
+
+          String flagEmoji(String code) {
+            final c = code.trim().toUpperCase();
+            if (c.length != 2 || !RegExp(r'^[A-Z]{2}$').hasMatch(c)) return '';
+            return String.fromCharCodes(c.codeUnits.map((u) => 0x1F1E6 + (u - 65)));
+          }
+
+          class Vault {
+            Vault._();
+            static final Vault i = Vault._();
+
+            final Map<String, dynamic> data = {};
+            enc.Encrypter? _enc;
+            File? _file;
+
+            bool get isOpen => _enc != null;
+
+            enc.Key _key(String pin) =>
+                enc.Key.fromUtf8(sha256.convert(utf8.encode('ccheker-live-v1::$pin')).toString().substring(0, 32));
+
+            Future<File> _fileRef() async {
+              _file ??= File('${(await getApplicationDocumentsDirectory()).path}/vault.bin');
+              return _file!;
+            }
+
+            Future<bool> exists() async => (await _fileRef()).existsSync();
+
+            String _encrypt(enc.Encrypter e, String plain) {
+              final iv = enc.IV.fromSecureRandom(16);
+              return '${iv.base64}:${e.encrypt(plain, iv: iv).base64}';
+            }
+
+            String _decrypt(enc.Encrypter e, String raw) {
+              final p = raw.split(':');
+              return e.decrypt64(p[1], iv: enc.IV.fromBase64(p[0]));
+            }
+
+            Future<void> create(String pin) async {
+              _enc = enc.Encrypter(enc.AES(_key(pin), mode: enc.AESMode.cbc));
+              data.clear();
+              await save();
+            }
+
+            Future<bool> open(String pin) async {
+              final f = await _fileRef();
+              if (!f.existsSync()) return false;
+              final e = enc.Encrypter(enc.AES(_key(pin), mode: enc.AESMode.cbc));
+              try {
+                final raw = f.readAsStringSync();
+                data
+                  ..clear()
+                  ..addAll(raw.isEmpty ? <String, dynamic>{} : Map<String, dynamic>.from(jsonDecode(_decrypt(e, raw)) as Map));
+                _enc = e;
+                return true;
+              } catch (_) {
+                return false;
+              }
+            }
+
+            Future<void> save() async {
+              final e = _enc;
+              if (e == null) return;
+              final f = await _fileRef();
+              await f.writeAsString(_encrypt(e, jsonEncode(data)));
+            }
+
+            void lock() => _enc = null;
+          }
+          DART
+
+          cat > lib/repos.dart <<'DART'
+          import 'core.dart';
+          import 'models.dart';
+
+          class CardRepo {
+            CardRepo._();
+            static final CardRepo i = CardRepo._();
+
+            List<CreditCard> all() {
+              final raw = Vault.i.data['cards'];
+              if (raw is! List) return [];
+              return raw
+                  .map((e) => CreditCard.fromJson(Map<String, dynamic>.from(e as Map)))
+                  .toList();
+            }
+
+            Future<void> persist(List<CreditCard> cards) async {
+              Vault.i.data['cards'] = cards.map((c) => c.toJson()).toList();
+              await Vault.i.save();
+            }
+
+            Future<int> addAll(List<CreditCard> cards) async {
+              final cur = all();
+              final have = cur.map((c) => c.pan).toSet();
+              final fresh = cards.where((c) => !have.contains(c.pan)).toList();
+              await persist([...cur, ...fresh]);
+              return fresh.length;
+            }
+
+            Future<void> clear() async {
+              Vault.i.data['cards'] = <dynamic>[];
+              await Vault.i.save();
+            }
+          }
+
+          class ProxyRepo {
+            ProxyRepo._();
+            static final ProxyRepo i = ProxyRepo._();
+
+            List<ProxyNode> all() {
+              final raw = Vault.i.data['proxies'];
+              if (raw is! List) return [];
+              return raw
+                  .map((e) => ProxyNode.fromJson(Map<String, dynamic>.from(e as Map)))
+                  .toList();
+            }
+
+            Future<void> persist(List<ProxyNode> nodes) async {
+              Vault.i.data['proxies'] = nodes.map((p) => p.toJson()).toList();
+              await Vault.i.save();
+            }
+
+            Future<void> upsert(ProxyNode n) async {
+              final list = all()..removeWhere((p) => p.id == n.id);
+              await persist([...list, n]);
+            }
+
+            Future<void> remove(String id) async {
+              await persist(all()..removeWhere((p) => p.id == id));
+            }
+          }
+          DART
+
+          cat > lib/import_engine.dart <<'DART'
+          import 'core.dart';
+          import 'models.dart';
+
+          class ImportResult {
+            ImportResult(this.cards, this.junk, this.duplicates);
+            final List<CreditCard> cards;
+            final int junk;
+            final int duplicates;
+          }
+
+          ImportResult parseCards(String raw) {
+            final out = <CreditCard>[];
+            final seen = <String>{};
+            var junk = 0;
+            var dup = 0;
+
+            for (final line in raw.split(RegExp(r'[\r\n]+'))) {
+              final t = line.trim();
+              if (t.isEmpty) continue;
+
+              final pans = RegExp(r'(?<!\d)(\d{13,19})(?!\d)').allMatches(t).toList();
+              String? pan;
+              for (final m in pans) {
+                if (luhn(m.group(1)!)) {
+                  pan = m.group(1);
+                  break;
+                }
+              }
+              pan ??= pans.isNotEmpty ? pans.first.group(1) : null;
+              if (pan == null) {
+                junk++;
+                continue;
+              }
+              if (seen.contains(pan)) {
+                dup++;
+                continue;
+              }
+              seen.add(pan);
+
+              var mm = '';
+              var yy = '';
+              final exp = RegExp(r'(?<!\d)(\d{2})\s*[/\-]\s*(\d{2,4})(?!\d)').firstMatch(t);
+              if (exp != null) {
+                mm = exp.group(1)!;
+                yy = exp.group(2)!;
+                final m = int.tryParse(mm) ?? 0;
+                if (m > 12) {
+                  final a = mm;
+                  mm = yy;
+                  yy = a;
+                }
+              }
+              final rest = (exp == null ? t : t.replaceRange(exp.start, exp.end, ' ')).replaceAll(pan, ' ');
+              final cvv = RegExp(r'(?<!\d)(\d{3,4})(?!\d)').firstMatch(rest)?.group(1) ?? '';
+
+              out.add(CreditCard(id: newId(), pan: pan, expMonth: mm, expYear: yy, cvv: cvv, bank: schemeOf(pan)));
+            }
+            return ImportResult(out, junk, dup);
+          }
+          DART
+
+          cat > lib/checker.dart <<'DART'
+          import 'dart:io';
+
+          import 'models.dart';
+
+          class CheckOutcome {
+            const CheckOutcome({required this.ok, required this.error, required this.ms, required this.note});
+            final bool ok;
+            final bool error;
+            final int ms;
+            final String note;
+          }
+
+          class CheckEngine {
+            CheckEngine(this.cfg);
+            final AppSettings cfg;
+
+            Future<CheckOutcome> probe(ProxyNode? p) async {
+              final client = HttpClient()..connectionTimeout = Duration(seconds: cfg.timeoutSec);
+              if (p != null) {
+                client.findProxy = (uri) => 'PROXY ${p.host}:${p.port}';
+                if (p.user.isNotEmpty) {
+                  client.addProxyCredentials(p.host, p.port, '', HttpClientBasicCredentials(p.user, p.pass));
+                }
+              }
+              final sw = Stopwatch()..start();
+              try {
+                final req = await client.getUrl(Uri.parse(cfg.probeUrl)).timeout(Duration(seconds: cfg.timeoutSec));
+                final res = await req.close().timeout(Duration(seconds: cfg.timeoutSec));
+                await res.drain<void>().timeout(Duration(seconds: cfg.timeoutSec));
+                sw.stop();
+                client.close(force: true);
+                final ok = res.statusCode >= 200 && res.statusCode < 400;
+                return CheckOutcome(ok: ok, error: false, ms: sw.elapsedMilliseconds, note: 'HTTP ${res.statusCode}');
+              } catch (e) {
+                sw.stop();
+                try {
+                  client.close(force: true);
+                } catch (_) {}
+                return CheckOutcome(
+                  ok: false,
+                  error: true,
+                  ms: sw.elapsedMilliseconds,
+                  note: e.toString().split(':').first,
+                );
+              }
+            }
+          }
+          DART
+
+          cat > lib/widgets.dart <<'DART'
+          import 'package:flutter/material.dart';
+
+          import 'theme.dart';
+
+          class GlassPanel extends StatelessWidget {
+            const GlassPanel({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap});
+            final Widget child;
+            final EdgeInsets padding;
+            final VoidCallback? onTap;
+
+            @override
+            Widget build(BuildContext context) {
+              final box = Container(
+                padding: padding,
+                decoration: BoxDecoration(
+                  gradient: AppColors.gradientGlass,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.glassStroke),
+                ),
+                child: child,
+              );
+              if (onTap == null) return box;
+              return InkWell(borderRadius: BorderRadius.circular(16), onTap: onTap, child: box);
+            }
+          }
+
+          class NeonButton extends StatelessWidget {
+            const NeonButton({super.key, required this.label, this.onPressed, this.color = AppColors.lime, this.icon});
+            final String label;
+            final VoidCallback? onPressed;
+            final Color color;
+            final IconData? icon;
+
+            @override
+            Widget build(BuildContext context) {
+              return Opacity(
+                opacity: onPressed == null ? 0.4 : 1,
+                child: Material(
+                  color: color.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: onPressed,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: color.withOpacity(0.5)),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (icon != null) ...[Icon(icon, size: 18, color: color), const SizedBox(width: 8)],
+                        Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+
+          class StatusPill extends StatelessWidget {
+            const StatusPill({super.key, required this.text, required this.color});
+            final String text;
+            final Color color;
+
+            @override
+            Widget build(BuildContext context) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withOpacity(0.4)),
+                ),
+                child: Text(text, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+              );
+            }
+          }
+
+          class SectionHeader extends StatelessWidget {
+            const SectionHeader(this.text, {super.key});
+            final String text;
+
+            @override
+            Widget build(BuildContext context) => Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 10),
+                  child: Text(text.toUpperCase(),
+                      style: const TextStyle(fontSize: 11, letterSpacing: 1.4, color: AppColors.textLo, fontWeight: FontWeight.w700)),
+                );
+          }
+
+          class StatTile extends StatelessWidget {
+            const StatTile({super.key, required this.label, required this.value, required this.color});
+            final String label;
+            final String value;
+            final Color color;
+
+            @override
+            Widget build(BuildContext context) => Expanded(
+                  child: GlassPanel(
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+                    child: Column(children: [
+                      Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color)),
+                      const SizedBox(height: 4),
+                      Text(label, style: AppTextStyles.caption),
+                    ]),
+                  ),
+                );
+          }
+
+          class SegmentedProgress extends StatelessWidget {
+            const SegmentedProgress({super.key, required this.value, this.segments = 24, this.color = AppColors.lime});
+            final double value;
+            final int segments;
+            final Color color;
+
+            @override
+            Widget build(BuildContext context) {
+              final on = (value.clamp(0, 1) * segments).round();
+              return Row(
+                children: List.generate(segments, (i) {
+                  return Expanded(
+                    child: Container(
+                      height: 5,
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        color: i < on ? color : AppColors.glassStroke,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  );
+                }),
+              );
+            }
+          }
+          DART
+
+          cat > lib/providers.dart <<'DART'
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:shared_preferences/shared_preferences.dart';
+
+          import 'checker.dart';
+          import 'models.dart';
+          import 'repos.dart';
+
+          final lockProvider = StateProvider<bool>((ref) => true);
+          final statsProvider = StateProvider<CheckStats>((ref) => CheckStats());
+
+          final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((ref) => SettingsNotifier());
+
+          class SettingsNotifier extends StateNotifier<AppSettings> {
+            SettingsNotifier() : super(AppSettings()) {
+              _load();
+            }
+
+            Future<void> _load() async {
+              final p = await SharedPreferences.getInstance();
+              state = state.copyWith(
+                concurrency: p.getInt('conc') ?? 4,
+                timeoutSec: p.getInt('to') ?? 12,
+                probeUrl: p.getString('probe') ?? state.probeUrl,
+                autoLockMin: p.getInt('lock') ?? 5,
+                biometrics: p.getBool('bio') ?? false,
+              );
+            }
+
+            Future<void> setConcurrency(int v) async {
+              state = state.copyWith(concurrency: v);
+              (await SharedPreferences.getInstance()).setInt('conc', v);
+            }
+
+            Future<void> setTimeout(int v) async {
+              state = state.copyWith(timeoutSec: v);
+              (await SharedPreferences.getInstance()).setInt('to', v);
+            }
+
+            Future<void> setProbeUrl(String v) async {
+              state = state.copyWith(probeUrl: v);
+              (await SharedPreferences.getInstance()).setString('probe', v);
+            }
+
+            Future<void> setAutoLock(int v) async {
+              state = state.copyWith(autoLockMin: v);
+              (await SharedPreferences.getInstance()).setInt('lock', v);
+            }
+
+            Future<void> setBiometrics(bool v) async {
+              state = state.copyWith(biometrics: v);
+              (await SharedPreferences.getInstance()).setBool('bio', v);
+            }
+          }
+
+          final cardsProvider = StateNotifierProvider<CardsNotifier, List<CreditCard>>((ref) => CardsNotifier());
+
+          class CardsNotifier extends StateNotifier<List<CreditCard>> {
+            CardsNotifier() : super(const []) {
+              reload();
+            }
+
+            void reload() => state = CardRepo.i.all();
+
+            Future<int> addAll(List<CreditCard> cards) async {
+              final n = await CardRepo.i.addAll(cards);
+              reload();
+              return n;
+            }
+
+            Future<void> setStatus(String id, CheckStatus s) async {
+              for (final c in state) {
+                if (c.id == id) c.status = s;
+              }
+              state = List.of(state);
+            }
+
+            Future<void> persist() => CardRepo.i.persist(state);
+
+            Future<void> clear() async {
+              await CardRepo.i.clear();
+              reload();
+            }
+          }
+
+          final proxiesProvider = StateNotifierProvider<ProxiesNotifier, List<ProxyNode>>((ref) => ProxiesNotifier());
+
+          class ProxiesNotifier extends StateNotifier<List<ProxyNode>> {
+            ProxiesNotifier() : super(const []) {
+              reload();
+            }
+
+            void reload() => state = ProxyRepo.i.all();
+
+            Future<void> upsert(ProxyNode n) async {
+              await ProxyRepo.i.upsert(n);
+              reload();
+            }
+
+            Future<void> remove(String id) async {
+              await ProxyRepo.i.remove(id);
+              reload();
+            }
+
+            Future<void> setHealth(String id, ProxyHealth h, int ms) async {
+              for (final p in state) {
+                if (p.id == id) {
+                  p.health = h;
+                  p.latencyMs = ms;
+                }
+              }
+              state = List.of(state);
+              await ProxyRepo.i.persist(state);
+            }
+          }
+
+          class MissionState {
+            MissionState({this.running = false, this.note = '', this.progress = 0, this.kind = ''});
+            final bool running;
+            final String note;
+            final double progress;
+            final String kind;
+
+            MissionState copyWith({bool? running, String? note, double? progress, String? kind}) => MissionState(
+                  running: running ?? this.running,
+                  note: note ?? this.note,
+                  progress: progress ?? this.progress,
+                  kind: kind ?? this.kind,
+                );
+          }
+
+          final missionProvider = StateNotifierProvider<MissionNotifier, MissionState>((ref) => MissionNotifier(ref));
+
+          class MissionNotifier extends StateNotifier<MissionState> {
+            MissionNotifier(this.ref) : super(MissionState());
+            final Ref ref;
+            bool _cancel = false;
+
+            Future<void> run() async {
+              // Disabled intentionally: a proxy/HTTP probe cannot determine whether a
+              // payment card is valid. Do not label stored records as live/dead based
+              // on an unrelated network request. Use provider-issued test tokens and
+              // the payment processor's official test environment for legitimate QA.
+              if (state.running) return;
+              _cancel = false;
+              ref.read(statsProvider.notifier).state = CheckStats();
+              state = MissionState(
+                running: false,
+                kind: 'chequeo no disponible',
+                note: 'La prueba de proxy no valida tarjetas. Usa el modo de pruebas del proveedor de pagos.',
+                progress: 0,
+              );
+            }
+
+            void stop() => _cancel = true;
+          }
+          DART
+
+          cat > lib/main.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+          import 'providers.dart';
+          import 'screens/lock.dart';
+          import 'screens/shell.dart';
+          import 'theme.dart';
+
+          void main() {
+            WidgetsFlutterBinding.ensureInitialized();
+            runApp(const ProviderScope(child: CChekerApp()));
+          }
+
+          class CChekerApp extends ConsumerWidget {
+            const CChekerApp({super.key});
+
+            @override
+            Widget build(BuildContext context, WidgetRef ref) {
+              final locked = ref.watch(lockProvider);
+              return MaterialApp(
+                title: 'CCheker Live',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData(
+                  useMaterial3: true,
+                  brightness: Brightness.dark,
+                  scaffoldBackgroundColor: AppColors.bg,
+                  fontFamily: 'Roboto',
+                  colorScheme: const ColorScheme.dark(
+                    primary: AppColors.lime,
+                    secondary: AppColors.cyan,
+                    surface: AppColors.surface,
+                  ),
+                  appBarTheme: const AppBarTheme(
+                    backgroundColor: AppColors.bg,
+                    foregroundColor: AppColors.textHi,
+                    elevation: 0,
+                  ),
+                  snackBarTheme: const SnackBarThemeData(
+                    backgroundColor: AppColors.bgElevated,
+                    contentTextStyle: TextStyle(color: AppColors.textHi),
+                  ),
+                ),
+                home: locked ? const LockScreen() : const Shell(),
+              );
+            }
+          }
+          DART
+
+          cat > lib/screens/lock.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:local_auth/local_auth.dart';
+
+          import '../core.dart';
+          import '../providers.dart';
+          import '../theme.dart';
+          import '../widgets.dart';
+
+          class LockScreen extends ConsumerStatefulWidget {
+            const LockScreen({super.key});
+            @override
+            ConsumerState<LockScreen> createState() => _LockScreenState();
+          }
+
+          class _LockScreenState extends ConsumerState<LockScreen> {
+            final _pin = <String>[];
+            String? _first;
+            String _msg = '';
+            bool _needCreate = false;
+            bool _busy = false;
+
+            @override
+            void initState() {
+              super.initState();
+              _boot();
+            }
+
+            Future<void> _boot() async {
+              final exists = await Vault.i.exists();
+              if (!mounted) return;
+              setState(() {
+                _needCreate = !exists;
+                _msg = exists ? 'Ingresá tu PIN' : 'Creá un PIN nuevo';
+              });
+              if (exists && ref.read(settingsProvider).biometrics) _bio();
+            }
+
+            void _tap(String d) {
+              if (_busy) return;
+              setState(() => _pin.add(d));
+              if (_pin.length == 6) _submit();
+            }
+
+            Future<void> _submit() async {
+              final pin = _pin.join();
+              if (_needCreate) {
+                if (_first == null) {
+                  setState(() {
+                    _first = pin;
+                    _pin.clear();
+                    _msg = 'Repetí el PIN';
+                  });
+                  return;
+                }
+                if (_first != pin) {
+                  setState(() {
+                    _first = null;
+                    _pin.clear();
+                    _msg = 'No coinciden, de nuevo';
+                  });
+                  return;
+                }
+                await Vault.i.create(pin);
+                _open();
+                return;
+              }
+              _busy = true;
+              final ok = await Vault.i.open(pin);
+              _busy = false;
+              if (!ok) {
+                setState(() {
+                  _pin.clear();
+                  _msg = 'PIN incorrecto';
+                });
+                return;
+              }
+              _open();
+            }
+
+            void _open() {
+              ref.read(cardsProvider.notifier).reload();
+              ref.read(proxiesProvider.notifier).reload();
+              ref.read(lockProvider.notifier).state = false;
+            }
+
+            Future<void> _bio() async {
+              try {
+                final auth = LocalAuthentication();
+                final ok = await auth.authenticate(
+                  localizedReason: 'Desbloquear CCheker Live',
+                  options: const AuthenticationOptions(biometricOnly: false, stickyAuth: true),
+                );
+                if (!ok) return;
+                if (!Vault.i.isOpen && mounted) setState(() => _msg = 'Ingresá tu PIN');
+              } catch (_) {}
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('CCheker', style: AppTextStyles.h1),
+                          const SizedBox(height: 4),
+                          const Text('LIVE', style: TextStyle(letterSpacing: 8, color: AppColors.lime, fontSize: 12)),
+                          const SizedBox(height: 28),
+                          Text(_msg, style: AppTextStyles.body),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(
+                              6,
+                              (i) => Container(
+                                width: 14,
+                                height: 14,
+                                margin: const EdgeInsets.symmetric(horizontal: 6),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: i < _pin.length ? AppColors.lime : Colors.transparent,
+                                  border: Border.all(color: AppColors.glassStrokeHi),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            alignment: WrapAlignment.center,
+                            children: [
+                              for (final d in ['1', '2', '3', '4', '5', '6', '7', '8', '9']) _key(d, () => _tap(d)),
+                              _key('bio', _bio, icon: Icons.fingerprint),
+                              _key('0', () => _tap('0')),
+                              _key('del', () {
+                                if (_pin.isNotEmpty) setState(() => _pin.removeLast());
+                              }, icon: Icons.backspace_outlined),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            Widget _key(String label, VoidCallback onTap, {IconData? icon}) {
+              return SizedBox(
+                width: 72,
+                height: 72,
+                child: GlassPanel(
+                  padding: EdgeInsets.zero,
+                  onTap: onTap,
+                  child: Center(
+                    child: icon != null
+                        ? Icon(icon, color: AppColors.textMid)
+                        : Text(label, style: AppTextStyles.h2),
+                  ),
+                ),
+              );
+            }
+          }
+          DART
+
+          cat > lib/screens/shell.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+          import '../core.dart';
+          import '../providers.dart';
+          import '../theme.dart';
+          import '../widgets.dart';
+          import 'import.dart';
+          import 'proxies.dart';
+          import 'reports.dart';
+          import 'settings.dart';
+          import 'vault.dart';
+
+          class Shell extends ConsumerStatefulWidget {
+            const Shell({super.key});
+            @override
+            ConsumerState<Shell> createState() => _ShellState();
+          }
+
+          class _ShellState extends ConsumerState<Shell> with WidgetsBindingObserver {
+            int _index = 0;
+            DateTime _paused = DateTime.now();
+            static const _titles = ['Bóveda', 'Importar', 'Proxies', 'Reportes', 'Ajustes'];
+
+            @override
+            void initState() {
+              super.initState();
+              WidgetsBinding.instance.addObserver(this);
+            }
+
+            @override
+            void dispose() {
+              WidgetsBinding.instance.removeObserver(this);
+              super.dispose();
+            }
+
+            @override
+            void didChangeAppLifecycleState(AppLifecycleState s) {
+              if (s == AppLifecycleState.paused) {
+                _paused = DateTime.now();
+              } else if (s == AppLifecycleState.resumed) {
+                final mins = ref.read(settingsProvider).autoLockMin;
+                if (mins > 0 && DateTime.now().difference(_paused).inMinutes >= mins) {
+                  Vault.i.lock();
+                  ref.read(lockProvider.notifier).state = true;
+                }
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final mission = ref.watch(missionProvider);
+              return Scaffold(
+                appBar: AppBar(
+                  title: Text(_titles[_index], style: AppTextStyles.h2),
+                  actions: [
+                    if (mission.running)
+                      TextButton(
+                        onPressed: () => ref.read(missionProvider.notifier).stop(),
+                        child: const Text('parar', style: TextStyle(color: AppColors.red)),
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.play_arrow_rounded, color: AppColors.lime),
+                      onPressed: () => ref.read(missionProvider.notifier).run(),
+                    ),
+                  ],
+                ),
+                body: Column(children: [
+                  if (mission.running) _Banner(mission: mission),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _index,
+                      children: const [
+                        VaultScreen(),
+                        ImportScreen(),
+                        ProxiesScreen(),
+                        ReportsScreen(),
+                        SettingsScreen(),
+                      ],
+                    ),
+                  ),
+                ]),
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: _index,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  backgroundColor: AppColors.bgElevated,
+                  indicatorColor: AppColors.lime.withOpacity(0.18),
+                  destinations: const [
+                    NavigationDestination(icon: Icon(Icons.credit_card), label: 'Bóveda'),
+                    NavigationDestination(icon: Icon(Icons.download_rounded), label: 'Importar'),
+                    NavigationDestination(icon: Icon(Icons.lan_outlined), label: 'Proxies'),
+                    NavigationDestination(icon: Icon(Icons.bar_chart_rounded), label: 'Reportes'),
+                    NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Ajustes'),
+                  ],
+                ),
+              );
+            }
+          }
+
+          class _Banner extends StatelessWidget {
+            const _Banner({required this.mission});
+            final MissionState mission;
+
+            @override
+            Widget build(BuildContext context) {
+              return Container(
+                margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: AppColors.gradientGlass,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.glassStrokeHi),
+                ),
+                child: Column(children: [
+                  Row(children: [
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.lime),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text('${mission.kind} · ${mission.note}', style: AppTextStyles.caption)),
+                  ]),
+                  const SizedBox(height: 8),
+                  SegmentedProgress(value: mission.progress),
+                ]),
+              );
+            }
+          }
+          DART
+
+          cat > lib/screens/vault.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+          import '../core.dart';
+          import '../models.dart';
+          import '../providers.dart';
+          import '../theme.dart';
+          import '../widgets.dart';
+
+          Color statusColor(CheckStatus s) => switch (s) {
+                CheckStatus.live => AppColors.lime,
+                CheckStatus.dead => AppColors.red,
+                CheckStatus.checking => AppColors.cyan,
+                CheckStatus.unknown => AppColors.amber,
+                CheckStatus.unchecked => AppColors.textLo,
+              };
+
+          Color tierColor(CardTier t) => switch (t) {
+                CardTier.gold => AppColors.tierGold,
+                CardTier.silver => AppColors.tierSilver,
+                CardTier.bronze => AppColors.tierBronze,
+                CardTier.platinum => AppColors.cyan,
+              };
+
+          class VaultScreen extends ConsumerStatefulWidget {
+            const VaultScreen({super.key});
+            @override
+            ConsumerState<VaultScreen> createState() => _VaultScreenState();
+          }
+
+          class _VaultScreenState extends ConsumerState<VaultScreen> {
+            String _q = '';
+
+            @override
+            Widget build(BuildContext context) {
+              final all = ref.watch(cardsProvider);
+              final cards = _q.isEmpty
+                  ? all
+                  : all.where((c) => c.pan.contains(_q) || c.bank.toLowerCase().contains(_q.toLowerCase())).toList();
+
+              return Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: TextField(
+                    onChanged: (v) => setState(() => _q = v.trim()),
+                    style: AppTextStyles.body,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por PAN o banco',
+                      hintStyle: AppTextStyles.caption,
+                      prefixIcon: const Icon(Icons.search, color: AppColors.textLo, size: 20),
+                      filled: true,
+                      fillColor: AppColors.bgElevated,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: cards.isEmpty
+                      ? const Center(child: Text('Sin tarjetas. Importá algunas.', style: AppTextStyles.body))
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: cards.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (_, i) => _tile(cards[i]),
+                        ),
+                ),
+              ]);
+            }
+
+            Widget _tile(CreditCard c) {
+              return GlassPanel(
+                onTap: () => _sheet(c),
+                child: Row(children: [
+                  Text(flagEmoji(c.country), style: const TextStyle(fontSize: 22)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(maskPan(c.pan), style: AppTextStyles.mono),
+                      const SizedBox(height: 4),
+                      Text('${c.bank}  ${c.expLabel}', style: AppTextStyles.caption),
+                    ]),
+                  ),
+                  StatusPill(text: c.status.label, color: statusColor(c.status)),
+                ]),
+              );
+            }
+
+            void _sheet(CreditCard c) {
+              showModalBottomSheet<void>(
+                context: context,
+                backgroundColor: AppColors.bgElevated,
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                builder: (_) => Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(c.pan, style: AppTextStyles.h2),
+                    const SizedBox(height: 16),
+                    _row('Vencimiento', c.expLabel),
+                    _row('CVV', c.cvv.isEmpty ? '—' : c.cvv),
+                    _row('Emisor', c.bank.isEmpty ? '—' : c.bank),
+                    _row('País', c.country.isEmpty ? '—' : c.country),
+                    _row('Estado', c.status.label),
+                    _row('Tier', c.tier.name),
+                    if (c.declineCode != null) _row('Decline', c.declineCode!),
+                    _row('Agregada', c.addedAt.toIso8601String().substring(0, 10)),
+                  ]),
+                ),
+              );
+            }
+
+            Widget _row(String k, String v) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Text(k, style: AppTextStyles.caption),
+                    Text(v, style: AppTextStyles.body),
+                  ]),
+                );
+          }
+          DART
+
+          cat > lib/screens/import.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+          import '../core.dart';
+          import '../import_engine.dart';
+          import '../providers.dart';
+          import '../theme.dart';
+          import '../widgets.dart';
+
+          class ImportScreen extends ConsumerStatefulWidget {
+            const ImportScreen({super.key});
+            @override
+            ConsumerState<ImportScreen> createState() => _ImportScreenState();
+          }
+
+          class _ImportScreenState extends ConsumerState<ImportScreen> {
+            final _ctrl = TextEditingController();
+            ImportResult? _res;
+
+            @override
+            void dispose() {
+              _ctrl.dispose();
+              super.dispose();
+            }
+
+            void _parse() => setState(() => _res = parseCards(_ctrl.text));
+
+            Future<void> _commit() async {
+              final res = _res;
+              if (res == null || res.cards.isEmpty) return;
+              final n = await ref.read(cardsProvider.notifier).addAll(res.cards);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$n tarjetas nuevas en la bóveda')));
+              setState(() {
+                _ctrl.clear();
+                _res = null;
+              });
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final res = _res;
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const SectionHeader('Pegá las líneas'),
+                  GlassPanel(
+                    child: TextField(
+                      controller: _ctrl,
+                      maxLines: 9,
+                      style: AppTextStyles.mono,
+                      decoration: const InputDecoration(
+                        hintText: '4111111111111111|12/28|123',
+                        hintStyle: AppTextStyles.caption,
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(children: [
+                    NeonButton(label: 'Analizar', icon: Icons.search, onPressed: _parse),
+                    const SizedBox(width: 10),
+                    NeonButton(label: 'Limpiar', color: AppColors.textMid, onPressed: () => setState(() {
+                          _ctrl.clear();
+                          _res = null;
+                        })),
+                  ]),
+                  if (res != null) ...[
+                    const SectionHeader('Vista previa'),
+                    GlassPanel(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${fmtInt(res.cards.length)} válidas',
+                            style: const TextStyle(color: AppColors.lime, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 6),
+                        Text('${fmtInt(res.duplicates)} repetidas · ${fmtInt(res.junk)} basura', style: AppTextStyles.caption),
+                        const SizedBox(height: 12),
+                        ...res.cards.take(12).map((c) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Text('${maskPan(c.pan)}   ${c.expLabel}   ${c.cvv}', style: AppTextStyles.mono),
+                            )),
+                        if (res.cards.length > 12) Text('… y ${res.cards.length - 12} más', style: AppTextStyles.caption),
+                      ]),
+                    ),
+                    const SizedBox(height: 14),
+                    NeonButton(
+                      label: 'Guardar ${fmtInt(res.cards.length)} en la bóveda',
+                      icon: Icons.save_alt,
+                      onPressed: res.cards.isEmpty ? null : _commit,
+                    ),
+                  ],
+                ],
+              );
+            }
+          }
+          DART
+
+          cat > lib/screens/proxies.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+          import '../checker.dart';
+          import '../core.dart';
+          import '../models.dart';
+          import '../providers.dart';
+          import '../theme.dart';
+          import '../widgets.dart';
+
+          class ProxiesScreen extends ConsumerStatefulWidget {
+            const ProxiesScreen({super.key});
+            @override
+            ConsumerState<ProxiesScreen> createState() => _ProxiesScreenState();
+          }
+
+          class _ProxiesScreenState extends ConsumerState<ProxiesScreen> {
+            final _host = TextEditingController();
+            final _port = TextEditingController();
+            final _user = TextEditingController();
+            final _pass = TextEditingController();
+
+            @override
+            void dispose() {
+              _host.dispose();
+              _port.dispose();
+              _user.dispose();
+              _pass.dispose();
+              super.dispose();
+            }
+
+            Future<void> _add() async {
+              final host = _host.text.trim();
+              final port = int.tryParse(_port.text.trim()) ?? 0;
+              if (host.isEmpty || port == 0) return;
+              await ref.read(proxiesProvider.notifier).upsert(ProxyNode(
+                    id: newId(),
+                    host: host,
+                    port: port,
+                    user: _user.text.trim(),
+                    pass: _pass.text.trim(),
+                  ));
+              _host.clear();
+              _port.clear();
+              _user.clear();
+              _pass.clear();
+            }
+
+            Future<void> _probeAll() async {
+              final cfg = ref.read(settingsProvider);
+              final engine = CheckEngine(cfg);
+              final list = ref.read(proxiesProvider);
+              for (final p in list) {
+                final out = await engine.probe(p);
+                await ref.read(proxiesProvider.notifier).setHealth(p.id, out.ok ? ProxyHealth.up : ProxyHealth.down, out.ms);
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final list = ref.watch(proxiesProvider);
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const SectionHeader('Agregar proxy'),
+                  GlassPanel(
+                    child: Column(children: [
+                      _f(_host, 'host'),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: _f(_port, 'puerto')),
+                        const SizedBox(width: 8),
+                        Expanded(child: _f(_user, 'user (opcional)')),
+                      ]),
+                      const SizedBox(height: 8),
+                      _f(_pass, 'pass (opcional)'),
+                      const SizedBox(height: 12),
+                      NeonButton(label: 'Agregar', icon: Icons.add, onPressed: _add),
+                    ]),
+                  ),
+                  const SectionHeader('Lista'),
+                  Row(children: [
+                    NeonButton(label: 'Probar todos', icon: Icons.speed, color: AppColors.cyan, onPressed: list.isEmpty ? null : _probeAll),
+                  ]),
+                  const SizedBox(height: 12),
+                  ...list.map((p) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: GlassPanel(
+                          child: Row(children: [
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(p.label, style: AppTextStyles.mono),
+                                const SizedBox(height: 4),
+                                Text(
+                                  p.health == ProxyHealth.up
+                                      ? 'ok · ${p.latencyMs} ms'
+                                      : p.health == ProxyHealth.down
+                                          ? 'caído'
+                                          : 'sin probar',
+                                  style: AppTextStyles.caption,
+                                ),
+                              ]),
+                            ),
+                            StatusPill(
+                              text: p.health.name,
+                              color: p.health == ProxyHealth.up
+                                  ? AppColors.lime
+                                  : p.health == ProxyHealth.down
+                                      ? AppColors.red
+                                      : AppColors.textLo,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textLo),
+                              onPressed: () => ref.read(proxiesProvider.notifier).remove(p.id),
+                            ),
+                          ]),
+                        ),
+                      )),
+                ],
+              );
+            }
+
+            Widget _f(TextEditingController c, String hint) => TextField(
+                  controller: c,
+                  style: AppTextStyles.body,
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: AppTextStyles.caption,
+                    filled: true,
+                    fillColor: AppColors.bg,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                );
+          }
+          DART
+
+          cat > lib/screens/reports.dart <<'DART'
+          import 'dart:convert';
+          import 'dart:io';
+
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:path_provider/path_provider.dart';
+
+          import '../core.dart';
+          import '../providers.dart';
+          import '../theme.dart';
+          import '../widgets.dart';
+
+          class ReportsScreen extends ConsumerWidget {
+            const ReportsScreen({super.key});
+
+            Future<void> _export(BuildContext context, WidgetRef ref) async {
+              final cards = ref.read(cardsProvider);
+              final dir = await getApplicationDocumentsDirectory();
+              final f = File('${dir.path}/ccheker_export_${DateTime.now().millisecondsSinceEpoch}.json');
+              await f.writeAsString(const JsonEncoder.withIndent('  ').convert({
+                'exportedAt': DateTime.now().toIso8601String(),
+                'total': cards.length,
+                'cards': cards.map((c) => c.toJson()).toList(),
+              }));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Exportado: ${f.path}')));
+            }
+
+            @override
+            Widget build(BuildContext context, WidgetRef ref) {
+              final stats = ref.watch(statsProvider);
+              final cards = ref.watch(cardsProvider);
+              final live = cards.where((c) => c.status.name == 'live').length;
+
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const SectionHeader('Sesión actual'),
+                  Row(children: [
+                    StatTile(label: 'probadas', value: fmtInt(stats.done), color: AppColors.cyan),
+                    const SizedBox(width: 10),
+                    StatTile(label: 'vivas', value: fmtInt(stats.live), color: AppColors.lime),
+                    const SizedBox(width: 10),
+                    StatTile(label: 'caídas', value: fmtInt(stats.dead), color: AppColors.red),
+                  ]),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    StatTile(label: 'errores', value: fmtInt(stats.errors), color: AppColors.amber),
+                    const SizedBox(width: 10),
+                    StatTile(label: 'hit rate', value: fmtPct(stats.hitRate), color: AppColors.violet),
+                  ]),
+                  const SectionHeader('Bóveda'),
+                  GlassPanel(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${fmtInt(cards.length)} tarjetas · $live vivas', style: AppTextStyles.body),
+                      const SizedBox(height: 12),
+                      NeonButton(label: 'Exportar JSON', icon: Icons.ios_share, onPressed: () => _export(context, ref)),
+                    ]),
+                  ),
+                ],
+              );
+            }
+          }
+          DART
+
+          cat > lib/screens/settings.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+          import '../core.dart';
+          import '../providers.dart';
+          import '../theme.dart';
+          import '../widgets.dart';
+
+          class SettingsScreen extends ConsumerStatefulWidget {
+            const SettingsScreen({super.key});
+            @override
+            ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+          }
+
+          class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+            late final TextEditingController _probe;
+
+            @override
+            void initState() {
+              super.initState();
+              _probe = TextEditingController(text: ref.read(settingsProvider).probeUrl);
+            }
+
+            @override
+            void dispose() {
+              _probe.dispose();
+              super.dispose();
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final s = ref.watch(settingsProvider);
+              final n = ref.read(settingsProvider.notifier);
+
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const SectionHeader('Motor'),
+                  GlassPanel(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Concurrencia: ${s.concurrency}', style: AppTextStyles.body),
+                      Slider(
+                        value: s.concurrency.toDouble(),
+                        min: 1,
+                        max: 16,
+                        divisions: 15,
+                        activeColor: AppColors.lime,
+                        onChanged: (v) => n.setConcurrency(v.round()),
+                      ),
+                      Text('Timeout: ${s.timeoutSec}s', style: AppTextStyles.body),
+                      Slider(
+                        value: s.timeoutSec.toDouble(),
+                        min: 5,
+                        max: 60,
+                        divisions: 11,
+                        activeColor: AppColors.cyan,
+                        onChanged: (v) => n.setTimeout(v.round()),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _probe,
+                        style: AppTextStyles.mono,
+                        onSubmitted: n.setProbeUrl,
+                        decoration: const InputDecoration(labelText: 'URL de prueba', labelStyle: AppTextStyles.caption),
+                      ),
+                    ]),
+                  ),
+                  const SectionHeader('Seguridad'),
+                  GlassPanel(
+                    child: Column(children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Biometría', style: AppTextStyles.body),
+                        value: s.biometrics,
+                        activeColor: AppColors.lime,
+                        onChanged: n.setBiometrics,
+                      ),
+                      Text('Auto-lock: ${s.autoLockMin} min', style: AppTextStyles.body),
+                      Slider(
+                        value: s.autoLockMin.toDouble(),
+                        min: 0,
+                        max: 30,
+                        divisions: 6,
+                        activeColor: AppColors.violet,
+                        onChanged: (v) => n.setAutoLock(v.round()),
+                      ),
+                    ]),
+                  ),
+                  const SectionHeader('Zona peligrosa'),
+                  GlassPanel(
+                    child: Column(children: [
+                      NeonButton(
+                        label: 'Vaciar bóveda',
+                        color: AppColors.red,
+                        icon: Icons.delete_forever,
+                        onPressed: () async {
+                          await ref.read(cardsProvider.notifier).clear();
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bóveda vaciada')));
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      NeonButton(
+                        label: 'Bloquear ahora',
+                        color: AppColors.textMid,
+                        icon: Icons.lock_outline,
+                        onPressed: () {
+                          Vault.i.lock();
+                          ref.read(lockProvider.notifier).state = true;
+                        },
+                      ),
+                    ]),
+                  ),
+                ],
+              );
+            }
+          }
+          DART
+
+          MAN="android/app/src/main/AndroidManifest.xml"
+          grep -q USE_BIOMETRIC "$MAN" || sed -i 's|<application|<uses-permission android:name="android.permission.USE_BIOMETRIC"/>\n    <application|' "$MAN"
+
+          for g in android/app/build.gradle android/app/build.gradle.kts; do
+            [ -f "$g" ] || continue
+            sed -i 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 23/' "$g"
+            sed -i 's/minSdkVersion = flutter\.minSdkVersion/minSdkVersion = 23/' "$g"
+            sed -i 's/minSdk = flutter\.minSdkVersion/minSdk = 23/' "$g"
+          done
+
+          MA="$(find android/app/src/main -name 'MainActivity.kt' | head -1 || true)"
+          if [ -n "${MA:-}" ]; then
+            python3 - "$MA" <<'PY'
+          import sys, pathlib
+          p = pathlib.Path(sys.argv[1]); s = p.read_text()
+          # Replace the activity type and its import together so Kotlin compiles.
+          s = s.replace('FlutterActivity', 'FlutterFragmentActivity')
+          p.write_text(s)
+          PY
+          fi
+
+          flutter pub get
+          flutter build apk --release
+
+      - name: Publicar
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: CCheker build ${{ github.run_number }}
+          files: ccheker_live/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Guardar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: ccheker_live/build/app/outputs/flutter-apk/app-release.apk
