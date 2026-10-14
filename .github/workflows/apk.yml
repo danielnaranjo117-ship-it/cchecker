@@ -1168,7 +1168,7 @@ jobs:
             final _rnd = Random();
 
             http.Client _client(ProxyNode? p) {
-              final hc = HttpClient()..connectionTimeoout = Duration(seconds: cfg.timeoutSec);
+              final hc = HttpClient()..connectionTimeout = Duration(seconds: cfg.timeoutSec);
               if (p != null) {
                 hc.findProxy = (_) =>
                     p.kind == ProxyKind.socks5 ? 'SOCKS5 ${p.host}:${p.port}' : 'PROXY ${p.host}:${p.port}';
@@ -1488,7 +1488,7 @@ jobs:
             void setProbeUrl(String v) { state = state.copyWith(probeUrl: v); _save(); }
             void setBiometrics(bool v) { state = state.copyWith(biometrics: v); _save(); }
             void setAutoLock(int v) { state = state.copyWith(autoLockMin: v); _save(); }
-            void setOfflineDb(bool v) { state = state.copyWith(offlineDb: v); _save(); }
+            Future<void> setOfflineDb(bool v) async { state = state.copyWith(offlineDb: v); await _save(); }
           }
 
           final cardsProvider = StateNotifierProvider<CardsNotifier, List<CreditCard>>((ref) => CardsNotifier());
@@ -3002,6 +3002,7 @@ jobs:
           import '../bin_db.dart';
           import '../checker.dart';
           import '../core.dart';
+          import '../models.dart';
           import '../net.dart';
           import '../providers.dart';
           import '../repos.dart';
