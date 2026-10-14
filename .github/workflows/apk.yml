@@ -26,8 +26,8 @@ jobs:
           set -euo pipefail
           flutter create --org com.ccheker --project-name ccheker_live --platforms android ccheker_live
           cd ccheker_live
+          mkdir -p lib/screens
           flutter pub add flutter_riverpod shared_preferences local_auth path_provider share_plus crypto
-
           cat > lib/theme.dart <<'DART'
           import 'package:flutter/material.dart';
 
